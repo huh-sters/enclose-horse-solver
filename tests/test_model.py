@@ -76,3 +76,20 @@ def test_solution_status_is_optimal_for_minimise():
     solution = build_and_solve(grid, walls=None)
     assert solution is not None
     assert solution.status == "optimal"
+
+
+def test_lovebirds_portal_bridge():
+    """In Lovebirds mode the two enclosures must be bridged by a portal."""
+    from src.parser import Mode
+    grid = parse_csv(FIXTURE)
+    assert grid.detect_mode() == Mode.LOVEBIRDS
+    solution = build_and_solve(grid, walls=None, mode=Mode.LOVEBIRDS)
+    assert solution is not None
+    # At least one portal pair must have both cells inside
+    portal_bridged = any(
+        solution.inside[r][c]
+        for positions in grid.portals.values()
+        if len(positions) == 2
+        for r, c in positions
+    )
+    assert portal_bridged, "Lovebirds solution must have at least one portal pair inside"

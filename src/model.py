@@ -16,7 +16,7 @@ class Solution:
     status: str
 
 
-def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches
+def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     grid: Grid,
     walls: int | None,
     mode: Mode | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
@@ -56,6 +56,21 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches
         if len(positions) == 2:
             (r1, c1), (r2, c2) = positions
             model.add(inside[r1][c1] == inside[r2][c2])
+
+    # Lovebirds constraint: the two horses must be connected via a portal.
+    # Because inside[A1] == inside[A2] is already enforced, requiring one portal
+    # pair to be inside is equivalent to requiring the two enclosed regions to be
+    # bridged (both ends of that portal act as a passage between regions).
+    if mode == Mode.LOVEBIRDS and grid.portals:
+        portal_bridge_vars: list[cp_model.BoolVarT] = []
+        for positions in grid.portals.values():
+            if len(positions) == 2:
+                (r1, c1), _ = positions
+                # inside[r1][c1] == inside[r2][c2] is already guaranteed;
+                # use either end as the "portal is bridging" indicator.
+                portal_bridge_vars.append(inside[r1][c1])
+        if portal_bridge_vars:
+            model.add_bool_or(portal_bridge_vars)
 
     # Wall (fence segment) variables.
     # A wall exists on an edge iff the two cells on either side differ in
