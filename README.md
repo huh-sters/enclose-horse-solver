@@ -5,7 +5,7 @@ A CLI tool that reads a CSV map exported from [enclose.horse](https://enclose.ho
 ## Quick start
 
 ```bash
-git clone <repo>
+git clone git@github.com:huh-sters/enclose-horse-solver.git
 cd enclose-horse-solver
 uv sync
 
