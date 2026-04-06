@@ -1,0 +1,17 @@
+[project]
+name = "enclose-horse-solver"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.12"
+dependencies = [
+    "ortools>=9.15.6755",
+    "rich>=14.3.3",
+    "typer>=0.24.1",
+]
+
+[dependency-groups]
+dev = [
+    "pylint>=4.0.5",
+    "pytest>=9.0.2",
+    "ruff>=0.15.9",
+]
