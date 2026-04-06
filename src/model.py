@@ -26,6 +26,8 @@ _CELL_SCORE: dict[CellType, int] = {
 
 @dataclass
 class Solution:
+    """Holds the solved wall placement and enclosed region for a puzzle."""
+
     wall: list[list[bool]]      # wall[r][c] = True if a wall is placed here
     enclosed: list[list[bool]]  # enclosed[r][c] = True if cell is in the enclosed region
     wall_count: int
@@ -104,15 +106,72 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             (r1, c1), (r2, c2) = positions
             model.add(enclosed[r1][c1] == enclosed[r2][c2])
 
-    # Lovebirds: the two enclosed horse regions must be bridged by a portal.
-    if mode == Mode.LOVEBIRDS and grid.portals:
-        portal_bridge_vars: list[cp_model.BoolVarT] = []
+    # Lovebirds: both horses must be in the same connected enclosed region.
+    # Enforced by sending one unit of flow from horse1 to horse2 through
+    # the enclosed region (portals treated as directed edges).
+    if mode == Mode.LOVEBIRDS and len(grid.animals) >= 2:
+        h1 = grid.animals[0]
+        h2 = grid.animals[1]
+
+        # Build directed edge list over non-water adjacencies + portal teleports
+        directed_edges: list[tuple[int, int, int, int]] = []
+        for r in range(nrows - 1):
+            for c in range(ncols):
+                if CellType.WATER not in (grid.cell_at(r, c).type, grid.cell_at(r + 1, c).type):
+                    directed_edges.append((r, c, r + 1, c))
+                    directed_edges.append((r + 1, c, r, c))
+        for r in range(nrows):
+            for c in range(ncols - 1):
+                if CellType.WATER not in (grid.cell_at(r, c).type, grid.cell_at(r, c + 1).type):
+                    directed_edges.append((r, c, r, c + 1))
+                    directed_edges.append((r, c + 1, r, c))
         for positions in grid.portals.values():
             if len(positions) == 2:
-                (r1, c1), _ = positions
-                portal_bridge_vars.append(enclosed[r1][c1])
-        if portal_bridge_vars:
-            model.add_bool_or(portal_bridge_vars)
+                (rp1, cp1), (rp2, cp2) = positions
+                directed_edges.append((rp1, cp1, rp2, cp2))
+                directed_edges.append((rp2, cp2, rp1, cp1))
+
+        # One boolean flow variable per directed edge
+        flow: dict[tuple[int, int, int, int], cp_model.BoolVarT] = {
+            e: model.new_bool_var(f"flow_{e[0]}_{e[1]}_{e[2]}_{e[3]}")
+            for e in directed_edges
+        }
+
+        # Flow may only traverse enclosed cells
+        for (r1f, c1f, r2f, c2f), fvar in flow.items():
+            model.add(fvar <= enclosed[r1f][c1f])
+            model.add(fvar <= enclosed[r2f][c2f])
+
+        # Build out/in adjacency lists keyed by cell
+        out_flow: dict[tuple[int, int], list] = {}
+        in_flow: dict[tuple[int, int], list] = {}
+        for (r1f, c1f, r2f, c2f), fvar in flow.items():
+            out_flow.setdefault((r1f, c1f), []).append(fvar)
+            in_flow.setdefault((r2f, c2f), []).append(fvar)
+
+        h1_pos = (h1.row, h1.col)
+        h2_pos = (h2.row, h2.col)
+
+        # Flow conservation at intermediate nodes (in == out)
+        for r in range(nrows):
+            for c in range(ncols):
+                if (r, c) in (h1_pos, h2_pos):
+                    continue
+                if grid.cell_at(r, c).type == CellType.WATER:
+                    continue
+                outs = out_flow.get((r, c), [])
+                ins = in_flow.get((r, c), [])
+                if outs or ins:
+                    model.add(sum(outs) == sum(ins))
+
+        # Horse1 is source: net outflow = 1
+        model.add(
+            sum(out_flow.get(h1_pos, [])) - sum(in_flow.get(h1_pos, [])) == 1
+        )
+        # Horse2 is sink: net inflow = 1
+        model.add(
+            sum(in_flow.get(h2_pos, [])) - sum(out_flow.get(h2_pos, [])) == 1
+        )
 
     # Outside-propagation constraints.
     # If c1 is NOT enclosed and neither c1 nor c2 is a wall, then c2 is also
