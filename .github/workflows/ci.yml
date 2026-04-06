@@ -3,6 +3,12 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: Run pytest tests
+        type: boolean
+        default: false
 
 jobs:
   lint:
@@ -25,4 +31,8 @@ jobs:
 
       - name: Pylint
         run: uv run pylint src/ solver.py tests/
+
+      - name: Tests
+        if: ${{ inputs.run_tests }}
+        run: uv run pytest tests/ -v
 
