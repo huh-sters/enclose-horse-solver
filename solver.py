@@ -27,6 +27,7 @@ class ModeArg(str, Enum):
     STANDARD = "standard"
     LOVEBIRDS = "lovebirds"
     HORSE_UNICORN = "horse_unicorn"
+    COSTLY_WALLS = "costly_walls"
 
 
 @app.command()
@@ -55,7 +56,9 @@ def main(
         f"Mode: {resolved_mode.value}"
     )
 
-    if walls is not None:
+    if resolved_mode == Mode.COSTLY_WALLS:
+        typer.echo("Solving for maximum score (walls cost 6 pts each) …")
+    elif walls is not None:
         typer.echo(f"Solving for exactly {walls} walls …")
     else:
         typer.echo("Solving for minimum walls …")

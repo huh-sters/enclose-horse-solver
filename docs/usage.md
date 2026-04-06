@@ -40,9 +40,10 @@ Export your puzzle from enclose.horse as a CSV. Each cell contains one of:
 | `U` | Unicorn — must be inside the enclosure |
 | `P` | Apple — inside the enclosure scores +10 |
 | `Z` | Bees — inside the enclosure scores −5 |
+| `C` | Cherry — inside the enclosure scores +3 |
 | `A`–`Z`* | Portal pair — both ends must be on the same side |
 
-\* excluding W, H, U, P, Z
+\* excluding W, H, U, P, Z, C
 
 ## Puzzle modes
 
@@ -54,7 +55,11 @@ Modes are auto-detected from the animals present on the map:
 | 2 horses | `lovebirds` |
 | 1 horse + 1 unicorn | `horse_unicorn` |
 
-In Lovebirds mode each horse may be in its own separate enclosure.
+`costly_walls` must be specified manually with `--mode costly_walls` as it is not auto-detected.
+
+In Lovebirds mode the two horses must be connected within the same enclosure via a portal.
+
+In Costly Walls mode each wall placed deducts 6 points from your score; the solver maximises the net score.
 
 ## Output
 

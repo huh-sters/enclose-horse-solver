@@ -15,6 +15,7 @@ _OUTSIDE_STYLE: dict[CellType, str] = {
     CellType.UNICORN: "bold magenta",
     CellType.APPLE:   "bold yellow",
     CellType.BEES:    "bold red",
+    CellType.CHERRY:  "bold red",
     CellType.PORTAL:  "bold yellow",
 }
 
@@ -26,6 +27,7 @@ _ENCLOSED_STYLE: dict[CellType, str] = {
     CellType.UNICORN: "bold magenta on dark_green",
     CellType.APPLE:   "bold yellow on dark_green",
     CellType.BEES:    "bold red on dark_green",
+    CellType.CHERRY:  "bold red on dark_green",
     CellType.PORTAL:  "bold yellow on dark_green",
 }
 
@@ -42,6 +44,7 @@ def _cell_label(cell_type: CellType, portal_id: str | None) -> str:
         CellType.UNICORN: "U",
         CellType.APPLE:   "P",
         CellType.BEES:    "Z",
+        CellType.CHERRY:  "C",
     }.get(cell_type, "?")
 
 

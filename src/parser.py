@@ -8,23 +8,31 @@ from pathlib import Path
 
 
 class CellType(Enum):
+    """Type of a grid cell."""
+
     GRASS = "grass"
     WATER = "water"
     HORSE = "horse"
     UNICORN = "unicorn"
     APPLE = "apple"
     BEES = "bees"
+    CHERRY = "cherry"
     PORTAL = "portal"
 
 
 class Mode(Enum):
+    """Puzzle variant, which controls the solving objective."""
+
     STANDARD = "standard"
     LOVEBIRDS = "lovebirds"
     HORSE_UNICORN = "horse_unicorn"
+    COSTLY_WALLS = "costly_walls"
 
 
 @dataclass
 class Cell:
+    """A single cell in the puzzle grid."""
+
     row: int
     col: int
     type: CellType
@@ -33,16 +41,20 @@ class Cell:
 
 @dataclass
 class Grid:
+    """Parsed puzzle grid with cell data and portal mappings."""
+
     rows: int
     cols: int
     cells: list[list[Cell]]
     portals: dict[str, list[tuple[int, int]]] = field(default_factory=dict)
 
     def cell_at(self, r: int, c: int) -> Cell:
+        """Return the cell at row r, column c."""
         return self.cells[r][c]
 
     @property
     def animals(self) -> list[Cell]:
+        """Return all horse and unicorn cells."""
         return [
             self.cells[r][c]
             for r in range(self.rows)
@@ -51,6 +63,7 @@ class Grid:
         ]
 
     def detect_mode(self) -> Mode:
+        """Infer the puzzle mode from the animals present on the grid."""
         animals = self.animals
         horses = [a for a in animals if a.type == CellType.HORSE]
         unicorns = [a for a in animals if a.type == CellType.UNICORN]
@@ -62,7 +75,7 @@ class Grid:
 
 
 # Single-character portal labels the game uses
-_PORTAL_LABELS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ") - frozenset("HWUPZ")
+_PORTAL_LABELS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ") - frozenset("HWUPZC")
 
 # Direct mapping from CSV value to CellType (non-portal entries)
 _VALUE_TO_TYPE: dict[str, CellType] = {
@@ -71,6 +84,7 @@ _VALUE_TO_TYPE: dict[str, CellType] = {
     "U": CellType.UNICORN,
     "P": CellType.APPLE,
     "Z": CellType.BEES,
+    "C": CellType.CHERRY,
 }
 
 

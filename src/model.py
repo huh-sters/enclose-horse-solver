@@ -20,8 +20,12 @@ _CELL_SCORE: dict[CellType, int] = {
     CellType.PORTAL: 1,
     CellType.APPLE: 11,   # 1 base + 10 bonus
     CellType.BEES: -4,    # 1 base − 5 penalty
+    CellType.CHERRY: 4,   # 1 base + 3 bonus
     CellType.WATER: 0,    # never enclosed
 }
+
+# Wall cost in Costly Walls mode
+_COSTLY_WALL_PENALTY = 6
 
 
 @dataclass
@@ -215,7 +219,10 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         if grid.cell_at(r, c).type != CellType.WATER
     )
 
-    if walls is not None:
+    if mode == Mode.COSTLY_WALLS:
+        # Each wall costs 6 points; maximise net score regardless of wall count.
+        model.maximize(score_expr - _COSTLY_WALL_PENALTY * total_walls)
+    elif walls is not None:
         model.maximize(score_expr)
     else:
         model.minimize(total_walls)
