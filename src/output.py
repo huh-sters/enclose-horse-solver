@@ -1,84 +1,89 @@
-"""Terminal renderer: draws the puzzle grid with fence segments overlaid."""
+"""Terminal renderer: draws the puzzle grid with walls and enclosed region."""
 from __future__ import annotations
 
 from rich.console import Console
+from rich.text import Text
 
 from .model import Solution
 from .parser import CellType, Grid
 
-# Cell display characters
-_CELL_CHAR: dict[CellType, str] = {
-    CellType.GRASS: ".",
-    CellType.WATER: "W",
-    CellType.HORSE: "H",
-    CellType.UNICORN: "U",
-    CellType.APPLE: "P",
-    CellType.BEES: "Z",
-    CellType.PORTAL: "?",  # overridden below using portal_id
+# Rich style per cell type (for cells NOT in the enclosed region)
+_OUTSIDE_STYLE: dict[CellType, str] = {
+    CellType.GRASS:   "dim white",
+    CellType.WATER:   "bold blue",
+    CellType.HORSE:   "bold red",
+    CellType.UNICORN: "bold magenta",
+    CellType.APPLE:   "bold yellow",
+    CellType.BEES:    "bold red",
+    CellType.PORTAL:  "bold yellow",
 }
 
-_H_WALL = "─"   # horizontal fence segment
-_V_WALL = "│"   # vertical fence segment
-_CORNER = "+"
+# Rich style per cell type when ENCLOSED (green background)
+_ENCLOSED_STYLE: dict[CellType, str] = {
+    CellType.GRASS:   "white on dark_green",
+    CellType.WATER:   "bold blue",           # water is never enclosed
+    CellType.HORSE:   "bold red on dark_green",
+    CellType.UNICORN: "bold magenta on dark_green",
+    CellType.APPLE:   "bold yellow on dark_green",
+    CellType.BEES:    "bold red on dark_green",
+    CellType.PORTAL:  "bold yellow on dark_green",
+}
+
+_WALL_STYLE = "bold white on dark_blue"
 
 
-def _cell_char(cell_type: CellType, portal_id: str | None) -> str:
+def _cell_label(cell_type: CellType, portal_id: str | None) -> str:
     if cell_type == CellType.PORTAL:
         return portal_id or "?"
-    return _CELL_CHAR.get(cell_type, "?")
+    return {
+        CellType.GRASS:   "~",
+        CellType.WATER:   "W",
+        CellType.HORSE:   "H",
+        CellType.UNICORN: "U",
+        CellType.APPLE:   "P",
+        CellType.BEES:    "Z",
+    }.get(cell_type, "?")
 
 
-def render(grid: Grid, solution: Solution) -> str:  # pylint: disable=too-many-locals
-    """Return a Unicode string showing the grid with fence segments."""
+def render(grid: Grid, solution: Solution) -> Text:
+    """Return a rich Text object rendering the grid."""
     nrows, ncols = grid.rows, grid.cols
-    inside = solution.inside
-    lines: list[str] = []
+    text = Text()
+
+    # Column header
+    text.append("   ")
+    for c in range(ncols):
+        text.append(f"{c:^3}", style="dim cyan")
+    text.append("\n")
 
     for r in range(nrows):
-        # ── Horizontal edge row (top boundary of row r) ──────────────────
-        h_line = ""
+        text.append(f"{r:2} ", style="dim cyan")
         for c in range(ncols):
-            upper_in = inside[r - 1][c] if r > 0 else False
-            this_in = inside[r][c]
-            h_line += _CORNER
-            h_line += (_H_WALL * 3) if (this_in != upper_in) else "   "
-        h_line += _CORNER
-        lines.append(h_line)
-
-        # ── Content row ──────────────────────────────────────────────────
-        c_line = ""
-        for c in range(ncols):
-            left_in = inside[r][c - 1] if c > 0 else False
-            this_in = inside[r][c]
-            c_line += _V_WALL if (this_in != left_in) else " "
             cell = grid.cell_at(r, c)
-            ch = _cell_char(cell.type, cell.portal_id)
-            marker = "*" if this_in else " "
-            c_line += f"{marker}{ch}{marker}"
-        right_in = inside[r][ncols - 1]
-        c_line += _V_WALL if right_in else " "
-        lines.append(c_line)
+            is_wall = solution.wall[r][c]
+            is_enc = solution.enclosed[r][c]
 
-    # ── Bottom perimeter edge row ─────────────────────────────────────────
-    h_line = ""
-    for c in range(ncols):
-        this_in = inside[nrows - 1][c]
-        h_line += _CORNER
-        h_line += (_H_WALL * 3) if this_in else "   "
-    h_line += _CORNER
-    lines.append(h_line)
+            if is_wall:
+                text.append(" # ", style=_WALL_STYLE)
+            elif is_enc:
+                label = _cell_label(cell.type, cell.portal_id)
+                text.append(f" {label} ", style=_ENCLOSED_STYLE[cell.type])
+            else:
+                label = _cell_label(cell.type, cell.portal_id)
+                text.append(f" {label} ", style=_OUTSIDE_STYLE[cell.type])
+        text.append("\n")
 
-    return "\n".join(lines)
+    return text
 
 
 def print_result(grid: Grid, solution: Solution) -> None:
     """Print the solution summary and rendered grid to the terminal."""
     console = Console()
-    console.print(f"\n[bold green]Status:[/]     {solution.status}")
-    console.print(f"[bold green]Walls used:[/] {solution.wall_count}")
-    if solution.score:
-        colour = "green" if solution.score >= 0 else "red"
-        console.print(f"[bold {colour}]Score:[/]      {solution.score:+d}")
+    console.print()
+    console.print(f"[bold green]Status:[/]         {solution.status}")
+    console.print(f"[bold green]Walls used:[/]     {solution.wall_count}")
+    console.print(f"[bold green]Enclosed cells:[/] {solution.enclosed_count}")
+    score_colour = "green" if solution.score >= 0 else "red"
+    console.print(f"[bold {score_colour}]Score:[/]          {solution.score:+d}")
     console.print()
     console.print(render(grid, solution))
-    console.print()
