@@ -209,7 +209,7 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
     model.add(total_walls == sum(all_wall_vars))
 
     if walls is not None:
-        model.add(total_walls == walls)
+        model.add(total_walls <= walls)
 
     # Objective
     score_expr = sum(

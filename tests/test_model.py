@@ -77,11 +77,11 @@ def test_portal_pairs_on_same_side():
             )
 
 
-def test_exact_wall_count():
+def test_wall_budget_not_exceeded():
     grid = parse_csv(FIXTURE)
     solution = build_and_solve(grid, walls=13, mode=Mode.LOVEBIRDS)
     assert solution is not None
-    assert solution.wall_count == 13
+    assert solution.wall_count <= 13
 
 
 def test_infeasible_returns_none():

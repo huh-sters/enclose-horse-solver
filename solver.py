@@ -24,6 +24,8 @@ app = typer.Typer(
 
 
 class ModeArg(str, Enum):
+    """CLI-facing puzzle mode argument (mirrors parser.Mode)."""
+
     STANDARD = "standard"
     LOVEBIRDS = "lovebirds"
     HORSE_UNICORN = "horse_unicorn"
@@ -35,13 +37,14 @@ def main(
     csv_file: Path = typer.Argument(..., help="CSV map exported from enclose.horse"),
     walls: Optional[int] = typer.Option(
         None, "--walls", "-w", min=1,
-        help="Exact number of fence segments to use.  Omit to find the minimum.",
+        help="Maximum number of walls to place.  Omit to find the minimum.",
     ),
     mode: Optional[ModeArg] = typer.Option(
         None, "--mode", "-m",
         help="Override auto-detected puzzle mode.",
     ),
 ) -> None:
+    """Solve an enclose.horse puzzle from a CSV map export."""
     if not csv_file.exists():
         typer.echo(f"Error: file not found: {csv_file}", err=True)
         raise typer.Exit(1)
@@ -59,7 +62,7 @@ def main(
     if resolved_mode == Mode.COSTLY_WALLS:
         typer.echo("Solving for maximum score (walls cost 6 pts each) …")
     elif walls is not None:
-        typer.echo(f"Solving for exactly {walls} walls …")
+        typer.echo(f"Solving for at most {walls} walls …")
     else:
         typer.echo("Solving for minimum walls …")
 
