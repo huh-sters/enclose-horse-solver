@@ -50,7 +50,7 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
     Args:
         grid:  Parsed puzzle grid.
         walls: Exact number of wall cells to place.  None → minimise walls.
-        mode:  Puzzle mode; drives the Lovebirds portal-bridge constraint.
+        mode:  Puzzle mode; drives the objective (e.g. costly-walls penalty).
 
     Returns:
         A Solution if one is found, otherwise None.
@@ -110,72 +110,79 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             (r1, c1), (r2, c2) = positions
             model.add(enclosed[r1][c1] == enclosed[r2][c2])
 
-    # Lovebirds: both horses must be in the same connected enclosed region.
-    # Enforced by sending one unit of flow from horse1 to horse2 through
-    # the enclosed region (portals treated as directed edges).
-    if mode == Mode.LOVEBIRDS and len(grid.animals) >= 2:
-        h1 = grid.animals[0]
-        h2 = grid.animals[1]
+    # Connectivity: ALL enclosed cells must form a single connected region
+    # containing the first animal.  Modelled as a spanning arborescence rooted
+    # at the first animal: each non-root enclosed cell must have exactly one
+    # enclosed "parent" neighbour with a strictly smaller BFS level.
+    # This generalises the old Lovebirds-only flow constraint; lovebirds
+    # connectivity is now automatically enforced because the second horse is
+    # enclosed and must therefore appear in the arborescence.
+    if grid.animals:
+        root = grid.animals[0]
+        max_level = nrows * ncols  # strict upper bound on BFS depth
 
-        # Build directed edge list over non-water adjacencies + portal teleports
-        directed_edges: list[tuple[int, int, int, int]] = []
+        level: list[list[cp_model.IntVar]] = [
+            [model.new_int_var(0, max_level, f"lev_{r}_{c}") for c in range(ncols)]
+            for r in range(nrows)
+        ]
+        model.add(level[root.row][root.col] == 0)
+
+        # Directed edge list: non-water adjacencies + portal teleports
+        conn_edges: list[tuple[int, int, int, int]] = []
         for r in range(nrows - 1):
             for c in range(ncols):
-                if CellType.WATER not in (grid.cell_at(r, c).type, grid.cell_at(r + 1, c).type):
-                    directed_edges.append((r, c, r + 1, c))
-                    directed_edges.append((r + 1, c, r, c))
+                if CellType.WATER not in (
+                    grid.cell_at(r, c).type, grid.cell_at(r + 1, c).type
+                ):
+                    conn_edges.append((r, c, r + 1, c))
+                    conn_edges.append((r + 1, c, r, c))
         for r in range(nrows):
             for c in range(ncols - 1):
-                if CellType.WATER not in (grid.cell_at(r, c).type, grid.cell_at(r, c + 1).type):
-                    directed_edges.append((r, c, r, c + 1))
-                    directed_edges.append((r, c + 1, r, c))
+                if CellType.WATER not in (
+                    grid.cell_at(r, c).type, grid.cell_at(r, c + 1).type
+                ):
+                    conn_edges.append((r, c, r, c + 1))
+                    conn_edges.append((r, c + 1, r, c))
         for positions in grid.portals.values():
             if len(positions) == 2:
                 (rp1, cp1), (rp2, cp2) = positions
-                directed_edges.append((rp1, cp1, rp2, cp2))
-                directed_edges.append((rp2, cp2, rp1, cp1))
+                conn_edges.append((rp1, cp1, rp2, cp2))
+                conn_edges.append((rp2, cp2, rp1, cp1))
 
-        # One boolean flow variable per directed edge
-        flow: dict[tuple[int, int, int, int], cp_model.BoolVarT] = {
-            e: model.new_bool_var(f"flow_{e[0]}_{e[1]}_{e[2]}_{e[3]}")
-            for e in directed_edges
+        # par[(r1,c1,r2,c2)] = 1  ⟺  (r1,c1) is the tree-parent of (r2,c2)
+        par: dict[tuple[int, int, int, int], cp_model.BoolVarT] = {
+            e: model.new_bool_var(f"par_{e[0]}_{e[1]}_{e[2]}_{e[3]}")
+            for e in conn_edges
         }
 
-        # Flow may only traverse enclosed cells
-        for (r1f, c1f, r2f, c2f), fvar in flow.items():
-            model.add(fvar <= enclosed[r1f][c1f])
-            model.add(fvar <= enclosed[r2f][c2f])
+        # Parent edge requires both endpoints to be enclosed
+        for (r1p, c1p, r2p, c2p), pvar in par.items():
+            model.add(pvar <= enclosed[r1p][c1p])
+            model.add(pvar <= enclosed[r2p][c2p])
 
-        # Build out/in adjacency lists keyed by cell
-        out_flow: dict[tuple[int, int], list] = {}
-        in_flow: dict[tuple[int, int], list] = {}
-        for (r1f, c1f, r2f, c2f), fvar in flow.items():
-            out_flow.setdefault((r1f, c1f), []).append(fvar)
-            in_flow.setdefault((r2f, c2f), []).append(fvar)
+        # Build per-cell incoming-edge lists
+        incoming: dict[tuple[int, int], list[tuple[int, int, int, int, cp_model.BoolVarT]]] = {}
+        for (r1p, c1p, r2p, c2p), pvar in par.items():
+            incoming.setdefault((r2p, c2p), []).append((r1p, c1p, r2p, c2p, pvar))
 
-        h1_pos = (h1.row, h1.col)
-        h2_pos = (h2.row, h2.col)
-
-        # Flow conservation at intermediate nodes (in == out)
+        root_pos = (root.row, root.col)
         for r in range(nrows):
             for c in range(ncols):
-                if (r, c) in (h1_pos, h2_pos):
-                    continue
-                if grid.cell_at(r, c).type == CellType.WATER:
-                    continue
-                outs = out_flow.get((r, c), [])
-                ins = in_flow.get((r, c), [])
-                if outs or ins:
-                    model.add(sum(outs) == sum(ins))
+                inc = incoming.get((r, c), [])
+                inc_pvars = [pvar for *_, pvar in inc]
 
-        # Horse1 is source: net outflow = 1
-        model.add(
-            sum(out_flow.get(h1_pos, [])) - sum(in_flow.get(h1_pos, [])) == 1
-        )
-        # Horse2 is sink: net inflow = 1
-        model.add(
-            sum(in_flow.get(h2_pos, [])) - sum(out_flow.get(h2_pos, [])) == 1
-        )
+                if (r, c) == root_pos:
+                    # Root has no parent
+                    model.add(sum(inc_pvars) == 0)
+                else:
+                    # Enclosed → exactly one parent; not enclosed → no parent
+                    model.add(sum(inc_pvars) == enclosed[r][c])
+
+                # Child level must exceed parent level
+                for r1p, c1p, _r2p, _c2p, pvar in inc:
+                    model.add(
+                        level[r][c] >= level[r1p][c1p] + 1
+                    ).only_enforce_if(pvar)
 
     # Outside-propagation constraints.
     # If c1 is NOT enclosed and neither c1 nor c2 is a wall, then c2 is also
