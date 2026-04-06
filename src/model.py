@@ -258,6 +258,9 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
         if grid.cell_at(r, c).type != CellType.WATER
     )
 
+    if mode == Mode.COSTLY_WALLS:
+        sc -= _COSTLY_WALL_PENALTY * wc
+
     return Solution(
         wall=wall_vals,
         enclosed=enc_vals,
