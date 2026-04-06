@@ -73,41 +73,54 @@ def build_and_solve(  # pylint: disable=too-many-locals,too-many-branches,too-ma
             model.add_bool_or(portal_bridge_vars)
 
     # Wall (fence segment) variables.
-    # A wall exists on an edge iff the two cells on either side differ in
-    # their "inside" value.  Perimeter edges treat the outside as inside=0.
+    # Rules:
+    #   • Water cells are natural barriers: any boundary with a water cell is
+    #     free (no fence segment needed).
+    #   • The map perimeter is an escape route: a perimeter edge beside a
+    #     non-water inside cell DOES cost a fence segment.
+    #   • All other interior edges cost a fence segment when the two cells
+    #     are on different sides of the enclosure.
     wall_vars: list[cp_model.BoolVarT] = []
 
-    def _add_edge(r1: int, c1: int, r2: int | None, c2: int | None, label: str) -> None:
+    def _add_perimeter_edge(r1: int, c1: int, label: str) -> None:
+        """Perimeter edge: free if the cell is water, otherwise costs a wall."""
+        if grid.cell_at(r1, c1).type == CellType.WATER:
+            return
         w = model.new_bool_var(label)
-        if r2 is None or c2 is None:
-            # Perimeter edge: wall iff adjacent cell is inside.
-            model.add(w == inside[r1][c1])
-        else:
-            # Interior edge: wall iff the two cells differ.
-            # Encodes w = |inside[r1][c1] - inside[r2][c2]|
-            model.add(w >= inside[r1][c1] - inside[r2][c2])
-            model.add(w >= inside[r2][c2] - inside[r1][c1])
-            model.add(w <= inside[r1][c1] + inside[r2][c2])
-            model.add(w <= 2 - inside[r1][c1] - inside[r2][c2])
+        model.add(w == inside[r1][c1])
         wall_vars.append(w)
 
-    # Perimeter edges
+    def _add_interior_edge(r1: int, c1: int, r2: int, c2: int, label: str) -> None:
+        """Interior edge: free if either cell is water, otherwise costs a wall
+        when the two cells are on opposite sides of the enclosure boundary.
+        Encodes w = |inside[r1][c1] - inside[r2][c2]|.
+        """
+        if CellType.WATER in (grid.cell_at(r1, c1).type, grid.cell_at(r2, c2).type):
+            return  # water boundary: natural barrier, no fence needed
+        w = model.new_bool_var(label)
+        model.add(w >= inside[r1][c1] - inside[r2][c2])
+        model.add(w >= inside[r2][c2] - inside[r1][c1])
+        model.add(w <= inside[r1][c1] + inside[r2][c2])
+        model.add(w <= 2 - inside[r1][c1] - inside[r2][c2])
+        wall_vars.append(w)
+
+    # Perimeter edges (map boundary is passable — escape route for the animal)
     for c in range(ncols):
-        _add_edge(0, c, None, None, f"wp_top_{c}")
-        _add_edge(nrows - 1, c, None, None, f"wp_bot_{c}")
+        _add_perimeter_edge(0, c, f"wp_top_{c}")
+        _add_perimeter_edge(nrows - 1, c, f"wp_bot_{c}")
     for r in range(nrows):
-        _add_edge(r, 0, None, None, f"wp_left_{r}")
-        _add_edge(r, ncols - 1, None, None, f"wp_right_{r}")
+        _add_perimeter_edge(r, 0, f"wp_left_{r}")
+        _add_perimeter_edge(r, ncols - 1, f"wp_right_{r}")
 
     # Interior horizontal edges (between row r and row r+1)
     for r in range(nrows - 1):
         for c in range(ncols):
-            _add_edge(r, c, r + 1, c, f"wh_{r}_{c}")
+            _add_interior_edge(r, c, r + 1, c, f"wh_{r}_{c}")
 
     # Interior vertical edges (between col c and col c+1)
     for r in range(nrows):
         for c in range(ncols - 1):
-            _add_edge(r, c, r, c + 1, f"wv_{r}_{c}")
+            _add_interior_edge(r, c, r, c + 1, f"wv_{r}_{c}")
 
     total_walls = model.new_int_var(0, len(wall_vars), "total_walls")
     model.add(total_walls == sum(wall_vars))
