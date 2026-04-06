@@ -1,10 +1,12 @@
 """Tests for src/model.py."""
+# pylint: disable=missing-function-docstring
 from pathlib import Path
 
-from src.model import build_and_solve
+from src.model import _CELL_SCORE, build_and_solve
 from src.parser import CellType, Mode, parse_csv
 
 FIXTURE = Path(__file__).parent / "fixtures" / "day98_lovebirds.csv"
+COSTLY_FIXTURE = Path(__file__).parent / "fixtures" / "day91-costly.csv"
 
 
 def test_minimum_wall_solve_finds_solution():
@@ -108,6 +110,93 @@ def test_enclosed_count_matches_field():
         for c in range(grid.cols)
     )
     assert solution.enclosed_count == manual_count
+
+
+# --- day91-costly fixture (costly-walls mode) ---
+
+def test_costly_walls_finds_solution():
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=None, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+
+
+def test_costly_walls_animal_enclosed():
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=None, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+    for animal in grid.animals:
+        assert solution.enclosed[animal.row][animal.col]
+
+
+def test_costly_walls_water_not_enclosed():
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=None, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+    for r in range(grid.rows):
+        for c in range(grid.cols):
+            if grid.cell_at(r, c).type == CellType.WATER:
+                assert not solution.enclosed[r][c]
+
+
+def test_costly_walls_score_deducts_wall_penalty():
+    """Score must equal cell scores minus 6 per wall placed."""
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=None, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+    cell_score = sum(
+        _CELL_SCORE[grid.cell_at(r, c).type] * solution.enclosed[r][c]
+        for r in range(grid.rows)
+        for c in range(grid.cols)
+        if grid.cell_at(r, c).type != CellType.WATER
+    )
+    assert solution.score == cell_score - 6 * solution.wall_count
+
+
+def test_costly_walls_budget_respected():
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=13, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+    assert solution.wall_count <= 13
+
+
+def _reachable_from_horse(grid, solution):  # pylint: disable=redefined-outer-name
+    """Return the set of enclosed cells reachable from the horse via BFS + portals."""
+    horse = grid.animals[0]
+    visited: set[tuple[int, int]] = {(horse.row, horse.col)}
+    queue = [(horse.row, horse.col)]
+    while queue:
+        r, c = queue.pop()
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = r + dr, c + dc
+            if (
+                0 <= nr < grid.rows
+                and 0 <= nc < grid.cols
+                and (nr, nc) not in visited
+                and solution.enclosed[nr][nc]
+                and grid.cell_at(nr, nc).type != CellType.WATER
+            ):
+                visited.add((nr, nc))
+                queue.append((nr, nc))
+    for positions in grid.portals.values():
+        if len(positions) == 2:
+            p1, p2 = positions
+            if p1 in visited and solution.enclosed[p2[0]][p2[1]]:
+                visited.add(p2)
+            if p2 in visited and solution.enclosed[p1[0]][p1[1]]:
+                visited.add(p1)
+    return visited
+
+
+def test_costly_walls_single_connected_enclosure():
+    """Every enclosed cell must be reachable from the horse (no isolated islands)."""
+    grid = parse_csv(COSTLY_FIXTURE)
+    solution = build_and_solve(grid, walls=None, mode=Mode.COSTLY_WALLS)
+    assert solution is not None
+    reachable = _reachable_from_horse(grid, solution)
+    for r in range(grid.rows):
+        for c in range(grid.cols):
+            if solution.enclosed[r][c]:
+                assert (r, c) in reachable, f"Enclosed cell ({r},{c}) not reachable from horse"
 
 
 def test_lovebirds_portal_bridge():

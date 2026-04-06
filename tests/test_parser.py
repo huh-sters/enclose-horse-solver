@@ -1,4 +1,5 @@
 """Tests for src/parser.py."""
+# pylint: disable=missing-function-docstring
 from pathlib import Path
 
 import pytest
@@ -6,6 +7,7 @@ import pytest
 from src.parser import CellType, Mode, parse_csv
 
 FIXTURE = Path(__file__).parent / "fixtures" / "day98_lovebirds.csv"
+COSTLY_FIXTURE = Path(__file__).parent / "fixtures" / "day91-costly.csv"
 
 
 def test_parse_returns_correct_dimensions():
@@ -80,3 +82,41 @@ def test_cell_coordinates_match_position():
 def test_missing_file_raises():
     with pytest.raises(FileNotFoundError):
         parse_csv(Path("nonexistent.csv"))
+
+
+# --- day91-costly fixture (standard mode, cherries) ---
+
+def test_costly_grid_dimensions():
+    grid = parse_csv(COSTLY_FIXTURE)
+    assert grid.rows == 16
+    assert grid.cols == 15
+
+
+def test_costly_mode_is_standard():
+    grid = parse_csv(COSTLY_FIXTURE)
+    assert grid.detect_mode() == Mode.STANDARD
+
+
+def test_costly_single_horse():
+    grid = parse_csv(COSTLY_FIXTURE)
+    assert len(grid.animals) == 1
+    assert grid.animals[0].type == CellType.HORSE
+
+
+def test_costly_cherry_cells_parsed():
+    grid = parse_csv(COSTLY_FIXTURE)
+    cherries = [
+        grid.cell_at(r, c)
+        for r in range(grid.rows)
+        for c in range(grid.cols)
+        if grid.cell_at(r, c).type == CellType.CHERRY
+    ]
+    assert len(cherries) == 4
+
+
+def test_costly_portals_detected():
+    grid = parse_csv(COSTLY_FIXTURE)
+    assert "A" in grid.portals
+    assert "B" in grid.portals
+    assert len(grid.portals["A"]) == 2
+    assert len(grid.portals["B"]) == 2
